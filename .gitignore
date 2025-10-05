@@ -1,0 +1,33 @@
+@"
+# Python / Django
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+db.sqlite3
+.env
+.env.*
+*.env
+*.egg-info/
+*.egg
+
+# Django collectstatic
+staticfiles/
+media/
+
+# Virtualenvs
+backend/venv/
+venv/
+.env/          
+
+# Node / Frontend (future-proof)
+node_modules/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+"@ | Out-File -Encoding UTF8 .gitignore
