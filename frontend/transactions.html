@@ -20,15 +20,17 @@
     <div class="main">
       <div class="card">
         <div class="row" style="justify-content:space-between;align-items:center">
-          <h3>All Transactions</h3>
+          <h3>My Transactions</h3>
           <div class="row" style="align-items:center;gap:10px">
-            <select id="scopeSelect" class="input" style="width:160px">
-              <option value="mine">Mine</option>
+            <select id="typeFilterSelect" class="input" style="width:160px">
               <option value="all">All</option>
+              <option value="sent">Sent</option>
+              <option value="received">Received</option>
             </select>
             <button id="btnTxRefresh" class="btn">🔄 Refresh</button>
           </div>
         </div>
+
 
         <div class="table-wrap mt16">
           <table class="table" id="txTable">
