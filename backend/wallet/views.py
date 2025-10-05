@@ -214,10 +214,9 @@ def prepare_transfer(request):
 @csrf_exempt
 @api_view(["POST"])
 def confirm_transfer(request):
-    
-    sender = (request.data.get("sender") or "").strip().lower()
-    nonce = (request.data.get("nonce") or "").strip()
+    nonce = request.data.get("nonce", "")
     signature = (request.data.get("signature") or "").strip()
+    sender = (request.data.get("sender") or "").strip().lower()
 
     if not is_hex_address(sender) or not nonce or not signature:
         return Response({"error":"Invalid payload"}, status=400)
@@ -225,13 +224,12 @@ def confirm_transfer(request):
     raw = cache.get(f"tx:{nonce}")
     if not raw:
         return Response({"error":"Expired or invalid nonce"}, status=400)
-
     info = json.loads(raw)
     if int(time.time()) > info["expires"]:
         return Response({"error":"Approval expired"}, status=400)
 
-    message = info["display"]
-    encoded = encode_defunct(text=message)
+    msg = info["display"]
+    encoded = encode_defunct(text=msg)
     recovered = Account.recover_message(encoded, signature=signature)
     if recovered.lower() != sender:
         return Response({"error":"Invalid signature"}, status=400)
@@ -266,19 +264,34 @@ def confirm_transfer(request):
         "nonce": nonce,
         "status": "success",
         "timestamp": int(time.time()),
-        "signed_message": message,
+        "signed_message": msg,
     }
-    tx_col().insert_one(tx_doc)
-
+    ins = tx_col().insert_one(tx_doc)
     cache.delete(f"tx:{nonce}")
 
+    # Fresh balances
     new_sender = wallets_col().find_one({"address": sender})
     new_recipient = wallets_col().find_one({"address": wr["address"]})
+
     return Response({
         "ok": True,
         "senderBalanceEth": float(new_sender["balance_wei"]/WEI),
         "recipientBalanceEth": float(new_recipient["balance_wei"]/WEI),
+        # NEW: tx details for email popup
+        "tx": {
+            "id": str(ins.inserted_id),
+            "sender": tx_doc["sender"],
+            "recipient": tx_doc["recipient"],
+            "amountWei": tx_doc["amount_wei"],
+            "amountEth": float(Decimal(tx_doc["amount_wei"]) / Decimal(WEI)),
+            "usdAmount": tx_doc["usd_amount"],
+            "timestamp": tx_doc["timestamp"],
+            "nonce": tx_doc["nonce"],
+        }
     })
+
+
+
 @api_view(["GET"])
 def tx_history(request):
     """
@@ -296,3 +309,51 @@ def tx_history(request):
     for r in rows:
         r["_id"] = str(r["_id"])
     return Response(rows)
+
+
+from django.core.mail import send_mail, EmailMessage
+import re
+
+EMAIL_REGEX = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+@csrf_exempt
+@api_view(["POST"])
+def notify_email(request):
+    email = (request.data.get("email") or "").strip()
+    tx = request.data.get("tx") or {}
+
+    if not EMAIL_REGEX.match(email):
+        return Response({"error":"Invalid email"}, status=400)
+
+    try:
+        amt_eth = tx.get("amountEth") or (Decimal(str(tx.get("amountWei", 0))) / Decimal(WEI))
+    except Exception:
+        amt_eth = 0
+
+    subject = "Your Mock ETH Transfer Receipt"
+    lines = [
+        "Thanks for using CypherD Wallet (Mock).",
+        "",
+        f"Status    : SUCCESS",
+        f"Amount    : {float(amt_eth):.6f} ETH" + (f" (${tx['usdAmount']:.2f} USD)" if tx.get("usdAmount") is not None else ""),
+        f"From      : {tx.get('sender','')}",
+        f"To        : {tx.get('recipient','')}",
+        f"Timestamp : {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(tx.get('timestamp', 0))))}",
+        f"Nonce     : {tx.get('nonce','')}",
+        f"Tx ID     : {tx.get('id','')}",
+        "",
+        "This is a Mock Transaction Receipt.",
+    ]
+    body = "\n".join(lines)
+
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None) or getattr(settings, "EMAIL_HOST_USER", None) or "no-reply@example.com",
+            recipient_list=[email],
+            fail_silently=False,
+        )
+        return Response({"ok": True})
+    except Exception as e:
+        return Response({"error": f"Email send failed: {e}"}, status=500)

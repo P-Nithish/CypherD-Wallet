@@ -61,8 +61,6 @@ async function onPrepare(){
     // res: { message, nonce, expiresAt, ethAmount }
     approve = res;
 
-    // Parse the message into fields:
-    // "Transfer X ETH (optional $Y USD) to TO from FROM | nonce=... | exp=UNIX"
     const m = res.message;
     const rx = /^Transfer ([\d.]+) ETH(?: \(\$([\d.]+) USD\))? to (0x[a-fA-F0-9]{40}) from (0x[a-fA-F0-9]{40}) \| nonce=([a-z0-9]+) \| exp=(\d+)$/i;
     const parts = m.match(rx);
@@ -117,15 +115,25 @@ async function onConfirm(){
       signature
     });
 
-    // Update local balance if returned
     if (typeof res.senderBalanceEth === 'number'){
       wallet.balance = res.senderBalanceEth; saveWallet(wallet);
     }
 
     closeModal();
-    // Minimal success feedback
-    alert('Transaction successful!');
-    location.href = 'dashboard.html';
+
+    const email = window.prompt("Transaction successful! Enter an email to receive the receipt (or Cancel):");
+    if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    try {
+        await postJSON(`${API_BASE_URL}/notify/email`, { email, tx: res.tx });
+        alert("Receipt sent to " + email);
+    } catch (e) {
+        console.error(e);
+        alert("Transaction done, but email failed: " + (e?.message || "error"));
+    }
+    }
+
+    location.href = "dashboard.html";
+
   }catch(e){
     console.error(e);
     closeModal();

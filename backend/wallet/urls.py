@@ -10,4 +10,5 @@ urlpatterns = [
     path("transfer/confirm", views.confirm_transfer),   
 
     path("tx/history", views.tx_history), 
+    path("notify/email", views.notify_email),
 ]
