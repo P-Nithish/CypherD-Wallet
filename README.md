@@ -63,3 +63,10 @@ python -m http.server 5173
 ### Transactions page
 
 - See all transactions involving your address, newest first
+
+## Output
+---
+<img src="https://github.com/P-Nithish/CypherD-Wallet/blob/main/img1.jpg">
+<img src="https://github.com/P-Nithish/CypherD-Wallet/blob/main/img2.jpg">
+<img src="https://github.com/P-Nithish/CypherD-Wallet/blob/main/img3.jpg">
+<img src="https://github.com/P-Nithish/CypherD-Wallet/blob/main/img4.jpg">
