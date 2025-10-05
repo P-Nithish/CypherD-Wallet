@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Send</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="shared.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js" defer></script>
+  <script src="send.js" defer></script>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <h2>ETH Wallet</h2>
+      <a class="nav-item" href="dashboard.html"><span>💰</span>Dashboard</a>
+      <a class="nav-item active" href="send.html"><span>📤</span>Send</a>
+      <a class="nav-item" href="transactions.html"><span>📋</span>Transactions</a>
+      <a class="nav-item logout" href="#" id="logoutBtn"><span>🚪</span>Logout</a>
+    </div>
+
+    <div class="main">
+      <div class="card">
+        <div class="kv mono"><span>From</span><span id="fromAddr"></span></div>
+        <div class="kv"><span>Balance</span><span id="fromBal"></span></div>
+
+        <div class="mt16">
+          <label class="label">Recipient (0x...)</label>
+          <input id="to" class="input mono" placeholder="0x..." />
+        </div>
+        <div class="row mt16">
+          <div class="col">
+            <label class="label">Amount</label>
+            <input id="amount" class="input" placeholder="0.0" />
+          </div>
+          <div class="col">
+            <label class="label">Currency</label>
+            <select id="currency" class="input">
+              <option value="ETH">ETH</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+        </div>
+        <div id="conv" class="notice mt8"></div>
+
+        <button id="btnPrepare" class="btn mt16">Review</button>
+        <div id="err" class="error mt8"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Approval Modal -->
+  <div id="modal" class="modal">
+    <div class="dialog">
+      <h3>Approve Transaction</h3>
+
+      <div class="approval-grid">
+        <div class="approval-row">
+          <div class="approval-label">Amount</div>
+          <div class="approval-value approval-amount">
+            <span id="apprAmount">-</span>
+            <span id="apprUsd" class="approval-usd"></span>
+          </div>
+        </div>
+
+        <div class="approval-row">
+          <div class="approval-label">To</div>
+          <div id="apprTo" class="approval-value mono">-</div>
+        </div>
+
+        <div class="approval-row">
+          <div class="approval-label">From</div>
+          <div id="apprFrom" class="approval-value mono">-</div>
+        </div>
+
+        <div class="approval-meta">
+          <div class="pill">nonce=<span id="apprNonce">-</span></div>
+          <div class="pill">expires=<span id="apprExp">-</span></div>
+        </div>
+
+        <div class="timer mt8"><div id="timerBar"></div></div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btnCancel" class="btn secondary">Cancel</button>
+        <!-- Label changed per your request -->
+        <button id="btnConfirm" class="btn">Confirm</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

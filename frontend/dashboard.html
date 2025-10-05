@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="shared.js" defer></script>
+  <script src="dashboard.js" defer></script>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <h2>ETH Wallet</h2>
+      <a class="nav-item active" href="dashboard.html"><span>💰</span>Dashboard</a>
+      <a class="nav-item" href="send.html"><span>📤</span>Send</a>
+      <a class="nav-item" href="transactions.html"><span>📋</span>Transactions</a>
+      <a class="nav-item logout" href="#" id="logoutBtn"><span>🚪</span>Logout</a>
+    </div>
+
+    <div class="main">
+      <div class="card">
+        <div class="kv"><span>Address</span><span id="addr" class="mono"></span></div>
+        <div class="kv"><span>Total Balance</span><span id="bal"></span></div>
+        <button id="btnRefresh" class="btn mt16">🔄 Refresh</button>
+      </div>
+
+      <div class="card mt24">
+        <h3>Recent Transactions</h3>
+        <table class="table mt16" id="txTable">
+          <thead><tr><th>Type</th><th>Peer</th><th>Amount (ETH)</th><th>Time</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="txEmpty" class="notice">No transactions yet.</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

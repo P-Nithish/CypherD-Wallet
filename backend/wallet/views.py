@@ -2,9 +2,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-from decimal import Decimal
+from django.core.cache import cache
+from decimal import Decimal, InvalidOperation
+from eth_account.messages import encode_defunct
 from eth_account import Account
-import time, random
+import time, random, requests, json
 
 # --- Enable HD wallet (mnemonic) features in eth-account ---
 Account.enable_unaudited_hdwallet_features()
@@ -14,6 +16,9 @@ DERIVATION_PATH = "m/44'/60'/0'/0/0"
 
 def wallets_col():
     return settings.MONGO_DB["wallets"]
+
+def tx_col():
+    return settings.MONGO_DB["transactions"]
 
 def is_hex_address(s: str) -> bool:
     return isinstance(s, str) and s.startswith("0x") and len(s) == 42
@@ -97,3 +102,197 @@ def balance(request):
         "address": w["address"],
         "balanceEth": float(w["balance_wei"] / WEI),
     })
+
+
+SKIP_API_URL = "https://api.skip.build/v2/fungible/msgs_direct"
+USDC_MAINNET = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # USDC (6 dp)
+ETHEREUM_CHAIN_ID = "1"
+
+def quote_usd_to_eth(amount_usd: Decimal) -> Decimal:
+    try:
+        usdc_units = int((amount_usd * Decimal(10**6)).quantize(Decimal("1")))
+    except InvalidOperation:
+        raise ValueError("Invalid USD amount")
+
+    payload = {
+        "source_asset_denom": USDC_MAINNET,
+        "source_asset_chain_id": ETHEREUM_CHAIN_ID,
+        "dest_asset_denom": "ethereum-native",
+        "dest_asset_chain_id": ETHEREUM_CHAIN_ID,
+        "amount_in": str(usdc_units),  # USDC base units (6 dp)
+        "chain_ids_to_addresses": { "1": "0x742d35Cc6634C0532925a3b8D4C9db96c728b0B4" },
+        "slippage_tolerance_percent": "1",
+        "smart_swap_options": { "evm_swaps": True },
+        "allow_unsafe": False
+    }
+
+    try:
+        r = requests.post(SKIP_API_URL, json=payload, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+
+        if isinstance(data, dict):
+            candidates = [
+                ("amount_out", 18),            
+                ("dest_amount", 18),           
+                ("amount_out_eth", None),      
+                ("dest_amount_eth", None),     
+                ("eth_out", None),             
+            ]
+            for key, wei_hint in candidates:
+                if key in data:
+                    raw = Decimal(str(data[key]))
+                    if wei_hint == 18:
+                        return raw / Decimal(WEI)  # wei -> ETH
+                    return raw                     # already ETH
+
+            for k in ("quote", "result", "swap", "tx", "outputs"):
+                if k in data and isinstance(data[k], dict):
+                    sub = data[k]
+                    for key, wei_hint in candidates:
+                        if key in sub:
+                            raw = Decimal(str(sub[key]))
+                            return raw / Decimal(WEI) if wei_hint == 18 else raw
+
+        raise ValueError("Unknown Skip API response shape")
+    except Exception:
+        return amount_usd / Decimal("3000")
+
+def build_approval_message(sender: str, recipient: str, eth_amount: Decimal, usd_amount: Decimal | None,
+                           nonce: str, expires: int) -> str:
+    if usd_amount is not None:
+        base = f"Transfer {eth_amount:.6f} ETH (${usd_amount:.2f} USD) to {recipient} from {sender}"
+    else:
+        base = f"Transfer {eth_amount:.6f} ETH to {recipient} from {sender}"
+    return f"{base} | nonce={nonce} | exp={expires}"
+
+@csrf_exempt
+@api_view(["POST"])
+def prepare_transfer(request):
+    sender = (request.data.get("sender") or "").strip().lower()
+    recipient = (request.data.get("recipient") or "").strip().lower()
+    currency = (request.data.get("currency") or "ETH").upper()
+
+    if not is_hex_address(sender) or not is_hex_address(recipient):
+        return Response({"error":"Invalid address"}, status=400)
+
+    try:
+        amount = Decimal(str(request.data.get("amount")))
+    except Exception:
+        return Response({"error":"Invalid amount"}, status=400)
+
+    ensure_wallet(sender)
+    ensure_wallet(recipient)
+
+    if currency == "USD":
+        eth_amount = quote_usd_to_eth(amount)
+        usd_amount = amount
+    else:
+        eth_amount = amount
+        usd_amount = None
+
+    nonce = Account.create().key.hex()[2:10] + str(int(time.time()))
+    expires = int(time.time()) + 30  # 30s TTL
+    message = build_approval_message(sender, recipient, eth_amount, usd_amount, nonce, expires)
+
+    cache.set(f"tx:{nonce}", json.dumps({
+        "sender": sender,
+        "recipient": recipient,
+        "eth_amount": str(eth_amount),
+        "usd_amount": str(usd_amount) if usd_amount is not None else None,
+        "expires": expires,
+        "display": message,  
+    }), timeout=30)
+
+    return Response({
+        "message": message,
+        "nonce": nonce,
+        "expiresAt": expires,
+        "ethAmount": float(eth_amount)
+    })
+
+@csrf_exempt
+@api_view(["POST"])
+def confirm_transfer(request):
+    
+    sender = (request.data.get("sender") or "").strip().lower()
+    nonce = (request.data.get("nonce") or "").strip()
+    signature = (request.data.get("signature") or "").strip()
+
+    if not is_hex_address(sender) or not nonce or not signature:
+        return Response({"error":"Invalid payload"}, status=400)
+
+    raw = cache.get(f"tx:{nonce}")
+    if not raw:
+        return Response({"error":"Expired or invalid nonce"}, status=400)
+
+    info = json.loads(raw)
+    if int(time.time()) > info["expires"]:
+        return Response({"error":"Approval expired"}, status=400)
+
+    message = info["display"]
+    encoded = encode_defunct(text=message)
+    recovered = Account.recover_message(encoded, signature=signature)
+    if recovered.lower() != sender:
+        return Response({"error":"Invalid signature"}, status=400)
+
+    eth_amount = Decimal(info["eth_amount"])
+    usd_amount = Decimal(info["usd_amount"]) if info.get("usd_amount") else None
+
+    if usd_amount is not None:
+        new_eth = quote_usd_to_eth(usd_amount)
+        drift = abs((new_eth - eth_amount) / eth_amount) if eth_amount > 0 else Decimal("0")
+        if drift > Decimal("0.01"):
+            return Response({"error":"Price moved >1%, please retry"}, status=409)
+        eth_amount = new_eth
+
+    amt_wei = int(eth_amount * WEI)
+
+    ws = ensure_wallet(sender)
+    wr = ensure_wallet(info["recipient"])
+
+    if ws["balance_wei"] < amt_wei:
+        cache.delete(f"tx:{nonce}")
+        return Response({"error":"Insufficient funds"}, status=400)
+
+    wallets_col().update_one({"address": sender}, {"$inc": {"balance_wei": -amt_wei}})
+    wallets_col().update_one({"address": wr["address"]}, {"$inc": {"balance_wei": +amt_wei}})
+
+    tx_doc = {
+        "sender": sender,
+        "recipient": wr["address"],
+        "amount_wei": amt_wei,
+        "usd_amount": float(usd_amount) if usd_amount is not None else None,
+        "nonce": nonce,
+        "status": "success",
+        "timestamp": int(time.time()),
+        "signed_message": message,
+    }
+    tx_col().insert_one(tx_doc)
+
+    cache.delete(f"tx:{nonce}")
+
+    new_sender = wallets_col().find_one({"address": sender})
+    new_recipient = wallets_col().find_one({"address": wr["address"]})
+    return Response({
+        "ok": True,
+        "senderBalanceEth": float(new_sender["balance_wei"]/WEI),
+        "recipientBalanceEth": float(new_recipient["balance_wei"]/WEI),
+    })
+@api_view(["GET"])
+def tx_history(request):
+    """
+    Returns list of txs sorted by timestamp desc.
+    """
+    scope = (request.GET.get("scope") or "").lower()
+    address = (request.GET.get("address") or "").strip().lower()
+
+    if scope == "all" or not is_hex_address(address):
+        cursor = tx_col().find({}).sort("timestamp", -1).limit(500)
+    else:
+        cursor = tx_col().find({"$or": [{"sender": address}, {"recipient": address}]}).sort("timestamp", -1).limit(500)
+
+    rows = list(cursor)
+    for r in rows:
+        r["_id"] = str(r["_id"])
+    return Response(rows)

@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Create / Import Wallet</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="shared.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js" defer></script>
+  <script src="wallet-creation.js" defer></script>
+</head>
+<body>
+  <div class="main" style="max-width:900px;margin:40px auto">
+    <div class="card">
+      <h2>Create or Import Your Wallet</h2>
+      <p class="notice mt8">Mock Wallet.</p>
+
+      <div class="row mt16">
+        <button id="btnCreate" class="btn">Create New Wallet</button>
+        <button id="btnShowImport" class="btn secondary">Import Existing Wallet</button>
+      </div>
+
+      <!-- Create -->
+      <div id="createBox" class="mt24" style="display:none">
+        <h3>Your 12-word Recovery Phrase</h3>
+        <p class="notice">⚠️ Write this down and keep it safe.</p>
+        <div id="mnemonicBox" class="card mt8 mono"></div>
+        <button id="btnConfirmCreated" class="btn mt16">I've saved my phrase</button>
+        <div id="createErr" class="error mt8"></div>
+      </div>
+
+      <!-- Import -->
+      <div id="importBox" class="mt24" style="display:none">
+        <h3>Import Wallet</h3>
+        <label class="label mt8">12-word phrase</label>
+        <textarea id="mnemonicInput" rows="3" class="input mono" placeholder="twelve words..."></textarea>
+        <button id="btnImport" class="btn mt16">Import</button>
+        <div id="importErr" class="error mt8"></div>
+      </div>
+
+      <!-- Result -->
+      <div id="resultBox" class="mt24" style="display:none">
+        <div class="success">✓ Wallet Ready</div>
+        <div class="kv mono"><span>Address</span><span id="addrOut"></span></div>
+        <div class="kv"><span>Balance</span><span id="balOut"></span></div>
+        <button id="btnGoDash" class="btn mt16">Go to Dashboard</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

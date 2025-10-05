@@ -2,7 +2,12 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path("wallet/create", views.create_wallet),   # POST -> generate 12-word mnemonic on server
-    path("wallet/import", views.import_wallet),   # POST -> accept 12-word mnemonic, derive address
+    path("wallet/create", views.create_wallet),   
+    path("wallet/import", views.import_wallet),   
     path("wallet/balance", views.balance),  
+
+    path("transfer/prepare", views.prepare_transfer),   
+    path("transfer/confirm", views.confirm_transfer),   
+
+    path("tx/history", views.tx_history), 
 ]
